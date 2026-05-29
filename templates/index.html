@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Chapter Tracker</title>
+  <title>Chapter Tracker - Shared Progress</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
   
@@ -94,25 +94,28 @@
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
     .stat-card.green { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); }
-    .stat-card.red   { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+    .stat-card.purple { border-color: rgba(124,106,247,0.3); background: rgba(124,106,247,0.06); }
     .stat-num { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; }
     .stat-card.green .stat-num { color: var(--green); }
-    .stat-card.red   .stat-num { color: var(--red); }
+    .stat-card.purple .stat-num { color: var(--accent); }
     .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
     /* CHAPTER GRID */
     .section-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
     .chapter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-bottom: 28px; }
     .ch-box {
-      aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+      aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
       background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px;
-      font-size: 15px; font-weight: 600; cursor: pointer;
+      cursor: pointer; position: relative;
       transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
       user-select: none;
     }
     .ch-box:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,106,247,0.2); }
-    .ch-box.marked { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+    .ch-box.marked { background: var(--green-dim); border-color: var(--green); }
     .ch-box.loading { opacity: 0.4; pointer-events: none; }
+    .ch-num { font-size: 15px; font-weight: 600; color: var(--text); }
+    .ch-box.marked .ch-num { color: var(--green); }
+    .ch-marker { font-size: 10px; font-weight: 700; text-transform: uppercase; margin-top: 4px; color: var(--green); opacity: 0.8; letter-spacing: 0.5px; }
 
     /* ACTIONS */
     .actions { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
@@ -200,19 +203,19 @@
     const TOTAL = 97;
 
     function App() {
-      const [screen, setScreen] = useState("loading"); // loading | login | app
-      const [currentUser, setCurrentUser] = useState(null); // { name, email }
-      const [allData, setAllData] = useState({});         // { Name: [1,3,5,...] }
+      const [screen, setScreen] = useState("loading");
+      const [currentUser, setCurrentUser] = useState(null);
+      // sharedData format: { "1": "Aibin", "3": "Milan" } mapping chapter to user
+      const [sharedData, setSharedData] = useState({});
       const [loginEmail, setLoginEmail] = useState("");
       const [loginPass, setLoginPass] = useState("");
       const [loginError, setLoginError] = useState("");
-      const [modal, setModal] = useState(null);           // { chap, action }
+      const [modal, setModal] = useState(null); // { chap, action: "mark"|"unmark", markedBy: "Name" }
       const [historyOpen, setHistoryOpen] = useState(false);
       const [toast, setToast] = useState("");
       const [loadingChap, setLoadingChap] = useState(null);
       const pollRef = useRef(null);
 
-      // ── Init: check localStorage for saved session ──
       useEffect(() => {
         const saved = localStorage.getItem("ct_user");
         if (saved) {
@@ -223,11 +226,10 @@
         }
       }, []);
 
-      // ── Poll data when logged in ──
       useEffect(() => {
         if (screen !== "app") return;
         fetchAll();
-        pollRef.current = setInterval(fetchAll, 5000);
+        pollRef.current = setInterval(fetchAll, 3000);
         return () => clearInterval(pollRef.current);
       }, [screen]);
 
@@ -235,13 +237,12 @@
         try {
           const r = await fetch("/api/chapters");
           const data = await r.json();
-          setAllData(data);
+          setSharedData(data);
         } catch (e) {
           console.error(e);
         }
       }
 
-      // ── Login ──
       async function doLogin() {
         setLoginError("");
         const r = await fetch("/api/login", {
@@ -263,15 +264,18 @@
       function doLogout() {
         localStorage.removeItem("ct_user");
         setCurrentUser(null);
-        setAllData({});
+        setSharedData({});
         setScreen("login");
       }
 
-      // ── Chapter click ──
       function clickChapter(n) {
-        const myMarked = new Set(allData[currentUser?.name] || []);
-        const isMarked = myMarked.has(n);
-        setModal({ chap: n, action: isMarked ? "unmark" : "mark" });
+        const strN = String(n);
+        const marker = sharedData[strN];
+        if (marker) {
+          setModal({ chap: n, action: "unmark", markedBy: marker });
+        } else {
+          setModal({ chap: n, action: "mark" });
+        }
       }
 
       async function confirmMark() {
@@ -280,22 +284,30 @@
         setModal(null);
         setLoadingChap(chap);
 
-        const current = allData[currentUser.name] || [];
-        let updated = new Set(current);
-        if (action === "mark") updated.add(chap);
-        else updated.delete(chap);
-        const arr = Array.from(updated).sort((a, b) => a - b);
-
+        const strN = String(chap);
+        
         // Optimistic update
-        setAllData(prev => ({ ...prev, [currentUser.name]: arr }));
+        setSharedData(prev => {
+          const next = { ...prev };
+          if (action === "mark") {
+            next[strN] = currentUser.name;
+          } else {
+            delete next[strN];
+          }
+          return next;
+        });
 
         try {
           await fetch("/api/chapters", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: currentUser.name, chapters: arr }),
+            body: JSON.stringify({ 
+              action: action, 
+              chapter: chap, 
+              user: currentUser.name 
+            }),
           });
-          showToast(action === "mark" ? `✅ Chapter ${chap} marked as read!` : `↩️ Chapter ${chap} unmarked.`);
+          showToast(action === "mark" ? `✅ Chapter ${chap} marked!` : `↩️ Chapter ${chap} unmarked.`);
         } catch {
           showToast("❌ Error saving. Try again.");
         }
@@ -311,8 +323,11 @@
         let rows = [[...NAMES]];
         
         const userChapters = NAMES.map(name => {
-          const chapters = (allData[name] || []).sort((a, b) => a - b);
-          return chapters.map(c => `Chap ${c}`);
+          return Object.entries(sharedData)
+            .filter(([_, marker]) => marker === name)
+            .map(([chapStr, _]) => parseInt(chapStr))
+            .sort((a, b) => a - b)
+            .map(c => `Chap ${c}`);
         });
 
         const maxRows = Math.max(...userChapters.map(list => list.length), 0);
@@ -333,14 +348,13 @@
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "chapter_tracker.csv"; a.click();
+        a.href = url; a.download = "chapter_tracker_shared.csv"; a.click();
         URL.revokeObjectURL(url);
         showToast("📊 Downloaded! Open in Excel.");
       }
 
-      const myMarked = new Set(allData[currentUser?.name] || []);
-      const readCount = myMarked.size;
-      const unreadCount = TOTAL - readCount;
+      const totalMarked = Object.keys(sharedData).length;
+      const myMarkedCount = Object.values(sharedData).filter(name => name === currentUser?.name).length;
 
       return (
         <React.Fragment>
@@ -359,7 +373,7 @@
                 <div className="login-logo">
                   <span className="icon">📚</span>
                   <h1>Chapter Tracker</h1>
-                  <p>Track your reading progress together</p>
+                  <p>Collaboratively track your progress together</p>
                 </div>
                 <div className="field">
                   <label>Email</label>
@@ -403,27 +417,31 @@
               {/* Stats */}
               <div className="stats">
                 <div className="stat-card green">
-                  <div className="stat-num">{readCount}</div>
-                  <div className="stat-label">read by you</div>
+                  <div className="stat-num">{totalMarked} <span style={{fontSize:14, color:'var(--green)', opacity:0.6, fontWeight:600}}>/ {TOTAL}</span></div>
+                  <div className="stat-label">total chapters read</div>
                 </div>
-                <div className="stat-card red">
-                  <div className="stat-num">{unreadCount}</div>
-                  <div className="stat-label">unread</div>
+                <div className="stat-card purple">
+                  <div className="stat-num">{myMarkedCount}</div>
+                  <div className="stat-label">read by you</div>
                 </div>
               </div>
 
               {/* Grid */}
-              <div className="section-title">Chapters — tap to mark as read</div>
+              <div className="section-title">Shared Chapters — Tap to mark</div>
               <div className="chapter-grid">
-                {Array.from({ length: TOTAL }, (_, i) => i + 1).map(n => (
-                  <div
-                    key={n}
-                    className={`ch-box${myMarked.has(n) ? " marked" : ""}${loadingChap === n ? " loading" : ""}`}
-                    onClick={() => clickChapter(n)}
-                  >
-                    {n}
-                  </div>
-                ))}
+                {Array.from({ length: TOTAL }, (_, i) => i + 1).map(n => {
+                  const marker = sharedData[String(n)];
+                  return (
+                    <div
+                      key={n}
+                      className={`ch-box${marker ? " marked" : ""}${loadingChap === n ? " loading" : ""}`}
+                      onClick={() => clickChapter(n)}
+                    >
+                      <div className="ch-num">{n}</div>
+                      {marker && <div className="ch-marker">{marker}</div>}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Actions */}
@@ -441,8 +459,8 @@
                 <div className="modal-title">{modal.action === "unmark" ? "Unmark Chapter?" : "Mark as Read?"}</div>
                 <div className="modal-body">
                   {modal.action === "unmark"
-                    ? <React.Fragment>Remove your mark from <strong>Chapter {modal.chap}</strong>?</React.Fragment>
-                    : <React.Fragment>Mark <strong>Chapter {modal.chap}</strong> as read?</React.Fragment>}
+                    ? <React.Fragment>Chapter {modal.chap} was marked by <strong>{modal.markedBy}</strong>. Do you want to unmark it?</React.Fragment>
+                    : <React.Fragment>Mark <strong>Chapter {modal.chap}</strong> as read under your name?</React.Fragment>}
                 </div>
                 <div className="modal-btns">
                   <button className="btn-cancel" onClick={() => setModal(null)}>Cancel</button>
@@ -466,13 +484,16 @@
                   <button className="history-close" onClick={() => setHistoryOpen(false)}>✕</button>
                 </div>
                 {NAMES.map(name => {
-                  const chapters = (allData[name] || []).sort((a, b) => a - b);
+                  const chapters = Object.entries(sharedData)
+                    .filter(([_, marker]) => marker === name)
+                    .map(([chapStr, _]) => parseInt(chapStr))
+                    .sort((a, b) => a - b);
                   return (
                     <div key={name}>
                       <div className="user-history-block">
                         <div className="user-name">
                           👤 {name}
-                          <span className="count-badge">{chapters.length} / {TOTAL}</span>
+                          <span className="count-badge">{chapters.length} marked</span>
                         </div>
                         <div className="chapter-tags">
                           {chapters.length
