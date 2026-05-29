@@ -2,7 +2,7 @@ import os
 import json
 import sqlite3
 import urllib.request
-from flask import Flask, request, jsonify, render_template, make_response
+from flask import Flask, request, jsonify, render_template_string, make_response
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
@@ -115,9 +115,543 @@ def save_shared_data(new_data):
         print("SQLite save error:", e)
         return False
 
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Chapter Tracker - Shared Progress v3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  
+  <style>
+    :root {
+      --bg: #0f0f13; --surface: #1a1a22; --surface2: #22222e;
+      --border: #2e2e3e; --text: #e8e8f0; --muted: #6b6b82;
+      --green: #22c55e; --green-dim: #14532d;
+      --red: #ef4444; --red-dim: #7f1d1d;
+      --accent: #7c6af7; --accent2: #a78bfa; --gold: #fbbf24;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; overflow-x: hidden; }
+    body::before {
+      content: ''; position: fixed; top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(124,106,247,0.12) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* LOADING */
+    .loading-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; flex-direction: column; gap: 16px; position: relative; z-index: 1;
+    }
+    .spinner {
+      width: 40px; height: 40px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* LOGIN */
+    .login-wrap {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; position: relative; z-index: 1;
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 420px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+      animation: fadeUp 0.5s ease both;
+    }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(24px); } to { opacity:1; transform:translateY(0); } }
+    .login-logo { text-align: center; margin-bottom: 32px; }
+    .login-logo .icon { font-size: 48px; display: block; margin-bottom: 12px; }
+    .login-logo h1 {
+      font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .login-logo p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .field { margin-bottom: 18px; }
+    .field label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.5px; text-transform: uppercase; }
+    .field input {
+      width: 100%; padding: 12px 16px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+      font-size: 15px; font-family: inherit; transition: border-color 0.2s;
+    }
+    .field input:focus { outline: none; border-color: var(--accent); }
+    .login-btn {
+      width: 100%; padding: 14px; background: linear-gradient(135deg, var(--accent), #6055d8);
+      border: none; border-radius: 12px; color: #fff; font-size: 15px;
+      font-weight: 600; cursor: pointer; transition: opacity 0.2s, transform 0.15s;
+    }
+    .login-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .login-error {
+      background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red); padding: 10px 14px; border-radius: 8px;
+      font-size: 13px; margin-top: 14px; text-align: center;
+    }
+
+    /* APP */
+    .app-wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px; position: relative; z-index: 1; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px; padding: 14px 20px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 10px; }
+    .topbar-logo { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+    .topbar-logo span { background: linear-gradient(135deg, var(--accent2), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .topbar-user { font-size: 13px; color: var(--muted); background: var(--surface2); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); }
+    .topbar-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: border-color 0.2s, color 0.2s; }
+    .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* STATS */
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+    .stat-card.green { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); }
+    .stat-card.purple { border-color: rgba(124,106,247,0.3); background: rgba(124,106,247,0.06); }
+    .stat-num { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; }
+    .stat-card.green .stat-num { color: var(--green); }
+    .stat-card.purple .stat-num { color: var(--accent); }
+    .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* CHAPTER GRID */
+    .section-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+    .chapter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-bottom: 28px; }
+    .ch-box {
+      aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px;
+      cursor: pointer; position: relative;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+      user-select: none;
+    }
+    .ch-box:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,106,247,0.2); }
+    .ch-box.marked { background: var(--green-dim); border-color: var(--green); }
+    .ch-box.loading { opacity: 0.4; pointer-events: none; }
+    .ch-num { font-size: 15px; font-weight: 600; color: var(--text); }
+    .ch-box.marked .ch-num { color: var(--green); }
+    .ch-marker { font-size: 10px; font-weight: 700; text-transform: uppercase; margin-top: 4px; color: var(--green); opacity: 0.8; letter-spacing: 0.5px; }
+
+    /* ACTIONS */
+    .actions { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+    .action-btn {
+      padding: 10px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--text); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: border-color 0.2s, background 0.2s;
+    }
+    .action-btn:hover { border-color: var(--accent); background: var(--surface2); }
+    .action-btn.primary { background: linear-gradient(135deg, var(--accent), #6055d8); border-color: transparent; color: #fff; }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+      display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    .modal-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 32px; max-width: 360px; width: 90%; text-align: center;
+      animation: fadeUp 0.25s ease;
+    }
+    .modal-icon { font-size: 40px; margin-bottom: 12px; }
+    .modal-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .modal-body { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+    .modal-body strong { color: var(--text); }
+    .modal-btns { display: flex; gap: 10px; }
+    .btn-cancel { flex: 1; padding: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); cursor: pointer; font-size: 14px; }
+    .btn-confirm-mark { flex: 1; padding: 12px; background: var(--green-dim); border: 1px solid var(--green); border-radius: 10px; color: var(--green); cursor: pointer; font-size: 14px; font-weight: 600; }
+    .btn-confirm-unmark { flex: 1; padding: 12px; background: var(--red-dim); border: 1px solid var(--red); border-radius: 10px; color: var(--red); cursor: pointer; font-size: 14px; font-weight: 600; }
+
+    /* HISTORY OVERLAY */
+    .history-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200;
+      display: flex; align-items: flex-end; justify-content: center;
+      backdrop-filter: blur(4px); animation: fadeIn 0.2s ease;
+    }
+    .history-panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 24px 24px 0 0; width: 100%; max-width: 700px;
+      max-height: 80vh; overflow-y: auto; padding: 28px 24px;
+    }
+    .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .history-header h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; }
+    .history-close { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+    .user-history-block { margin-bottom: 20px; }
+    .user-name { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 10px; font-size: 15px; }
+    .count-badge { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+    .chapter-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ctag { background: rgba(124,106,247,0.15); border: 1px solid rgba(124,106,247,0.3); color: var(--accent2); padding: 3px 8px; border-radius: 6px; font-size: 12px; }
+    .ctag-empty { color: var(--muted); font-size: 13px; font-style: italic; }
+    .history-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0 20px; }
+
+    /* TOAST */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 20px; font-size: 14px; z-index: 999;
+      opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 500px) {
+      .chapter-grid { grid-template-columns: repeat(auto-fill, minmax(65px, 1fr)); gap: 8px; }
+      .login-card { padding: 36px 24px; margin: 16px; }
+      .stats { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    {% raw %}
+    const { useState, useEffect, useRef } = React;
+
+    const NAMES = ["Aibin", "Milan", "Edwin", "Seba", "Lakshmi"];
+    const TOTAL = 97;
+
+    function App() {
+      const [screen, setScreen] = useState("loading");
+      const [currentUser, setCurrentUser] = useState(null);
+      // sharedData format: { "1": "Aibin", "3": "Milan" } mapping chapter to user
+      const [sharedData, setSharedData] = useState({});
+      const [loginEmail, setLoginEmail] = useState("");
+      const [loginPass, setLoginPass] = useState("");
+      const [loginError, setLoginError] = useState("");
+      const [modal, setModal] = useState(null); // { chap, action: "mark"|"unmark", markedBy: "Name" }
+      const [historyOpen, setHistoryOpen] = useState(false);
+      const [toast, setToast] = useState("");
+      const [loadingChap, setLoadingChap] = useState(null);
+      const pollRef = useRef(null);
+
+      useEffect(() => {
+        const saved = localStorage.getItem("ct_user");
+        if (saved) {
+          setCurrentUser(JSON.parse(saved));
+          setScreen("app");
+        } else {
+          setScreen("login");
+        }
+      }, []);
+
+      useEffect(() => {
+        if (screen !== "app") return;
+        fetchAll();
+        pollRef.current = setInterval(fetchAll, 3000);
+        return () => clearInterval(pollRef.current);
+      }, [screen]);
+
+      async function fetchAll() {
+        try {
+          const r = await fetch("/api/chapters");
+          const data = await r.json();
+          // Ensure we are setting an object
+          if (data && !Array.isArray(data)) {
+            setSharedData(data);
+          } else {
+            setSharedData({});
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      async function doLogin() {
+        setLoginError("");
+        const r = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: loginEmail.trim().toLowerCase(), password: loginPass }),
+        });
+        if (!r.ok) {
+          const e = await r.json();
+          setLoginError(e.error || "Login failed.");
+          return;
+        }
+        const user = await r.json();
+        localStorage.setItem("ct_user", JSON.stringify(user));
+        setCurrentUser(user);
+        setScreen("app");
+      }
+
+      function doLogout() {
+        localStorage.removeItem("ct_user");
+        setCurrentUser(null);
+        setSharedData({});
+        setScreen("login");
+      }
+
+      function clickChapter(n) {
+        const strN = String(n);
+        const marker = sharedData[strN];
+        if (marker) {
+          setModal({ chap: n, action: "unmark", markedBy: marker });
+        } else {
+          setModal({ chap: n, action: "mark" });
+        }
+      }
+
+      async function confirmMark() {
+        if (!modal) return;
+        const { chap, action } = modal;
+        setModal(null);
+        setLoadingChap(chap);
+
+        const strN = String(chap);
+        
+        // Optimistic update
+        setSharedData(prev => {
+          const next = { ...prev };
+          if (action === "mark") {
+            next[strN] = currentUser.name;
+          } else {
+            delete next[strN];
+          }
+          return next;
+        });
+
+        try {
+          await fetch("/api/chapters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              action: action, 
+              chapter: chap, 
+              user: currentUser.name 
+            }),
+          });
+          showToast(action === "mark" ? `✅ Chapter ${chap} marked!` : `↩️ Chapter ${chap} unmarked.`);
+        } catch {
+          showToast("❌ Error saving. Try again.");
+        }
+        setLoadingChap(null);
+      }
+
+      function showToast(msg) {
+        setToast(msg);
+        setTimeout(() => setToast(""), 3000);
+      }
+
+      function downloadCSV() {
+        let rows = [[...NAMES]];
+        
+        const userChapters = NAMES.map(name => {
+          return Object.entries(sharedData)
+            .filter(([_, marker]) => marker === name)
+            .map(([chapStr, _]) => parseInt(chapStr))
+            .sort((a, b) => a - b)
+            .map(c => `Chap ${c}`);
+        });
+
+        const maxRows = Math.max(...userChapters.map(list => list.length), 0);
+
+        for (let i = 0; i < maxRows; i++) {
+          let row = [];
+          NAMES.forEach((name, index) => {
+            row.push(userChapters[index][i] || "");
+          });
+          rows.push(row);
+        }
+
+        if (maxRows === 0) {
+          rows.push(NAMES.map(() => ""));
+        }
+
+        const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "chapter_tracker_shared.csv"; a.click();
+        URL.revokeObjectURL(url);
+        showToast("📊 Downloaded! Open in Excel.");
+      }
+
+      const totalMarked = Object.keys(sharedData).length;
+      const myMarkedCount = Object.values(sharedData).filter(name => name === currentUser?.name).length;
+
+      return (
+        <React.Fragment>
+          {/* LOADING */}
+          {screen === "loading" && (
+            <div className="loading-screen">
+              <div className="spinner" />
+              <p style={{ color: "var(--muted)", fontSize: 14 }}>Loading…</p>
+            </div>
+          )}
+
+          {/* LOGIN */}
+          {screen === "login" && (
+            <div className="login-wrap">
+              <div className="login-card">
+                <div className="login-logo">
+                  <span className="icon">📚</span>
+                  <h1>Chapter Tracker</h1>
+                  <p>Collaboratively track your progress together</p>
+                </div>
+                <div className="field">
+                  <label>Email</label>
+                  <input
+                    type="email" value={loginEmail}
+                    onChange={e => setLoginEmail(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && document.getElementById("passInput").focus()}
+                    placeholder="your@email.com" autoComplete="email"
+                  />
+                </div>
+                <div className="field">
+                  <label>Password</label>
+                  <input
+                    id="passInput" type="password" value={loginPass}
+                    onChange={e => setLoginPass(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && doLogin()}
+                    placeholder="••••••••" autoComplete="current-password"
+                  />
+                </div>
+                <button className="login-btn" onClick={doLogin}>Sign In →</button>
+                {loginError && <div className="login-error">⚠️ {loginError}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* APP */}
+          {screen === "app" && currentUser && (
+            <div className="app-wrap">
+              {/* Topbar */}
+              <div className="topbar">
+                <div className="topbar-left">
+                  <div className="topbar-logo">📚 <span>Chapter Tracker</span></div>
+                  <span style={{fontSize:10, background:'rgba(124,106,247,0.2)', border:'1px solid rgba(124,106,247,0.4)', color:'var(--accent2)', padding:'2px 6px', borderRadius:4, marginLeft:4}}>v3 SHARED</span>
+                </div>
+                <div className="topbar-right">
+                  <div className="topbar-user">👤 {currentUser.name}</div>
+                  <button className="topbar-btn" onClick={() => setHistoryOpen(true)}>📋 All Progress</button>
+                  <button className="topbar-btn" onClick={doLogout}>Sign Out</button>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="stats">
+                <div className="stat-card green">
+                  <div className="stat-num">{totalMarked} <span style={{fontSize:14, color:'var(--green)', opacity:0.6, fontWeight:600}}>/ {TOTAL}</span></div>
+                  <div className="stat-label">total chapters read</div>
+                </div>
+                <div className="stat-card purple">
+                  <div className="stat-num">{myMarkedCount}</div>
+                  <div className="stat-label">read by you</div>
+                </div>
+              </div>
+
+              {/* Grid */}
+              <div className="section-title">Shared Chapters — Tap to mark</div>
+              <div className="chapter-grid">
+                {Array.from({ length: TOTAL }, (_, i) => i + 1).map(n => {
+                  const marker = sharedData[String(n)];
+                  return (
+                    <div
+                      key={n}
+                      className={`ch-box${marker ? " marked" : ""}${loadingChap === n ? " loading" : ""}`}
+                      onClick={() => clickChapter(n)}
+                    >
+                      <div className="ch-num">{n}</div>
+                      {marker && <div className="ch-marker">{marker}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Actions */}
+              <div className="actions">
+                <button className="action-btn primary" onClick={downloadCSV}>📊 Download Excel Report</button>
+              </div>
+            </div>
+          )}
+
+          {/* CONFIRM MODAL */}
+          {modal && (
+            <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
+              <div className="modal-card">
+                <div className="modal-icon">{modal.action === "unmark" ? "↩️" : "📌"}</div>
+                <div className="modal-title">{modal.action === "unmark" ? "Unmark Chapter?" : "Mark as Read?"}</div>
+                <div className="modal-body">
+                  {modal.action === "unmark"
+                    ? <React.Fragment>Chapter {modal.chap} was marked by <strong>{modal.markedBy}</strong>. Do you want to unmark it?</React.Fragment>
+                    : <React.Fragment>Mark <strong>Chapter {modal.chap}</strong> as read under your name?</React.Fragment>}
+                </div>
+                <div className="modal-btns">
+                  <button className="btn-cancel" onClick={() => setModal(null)}>Cancel</button>
+                  <button
+                    className={modal.action === "unmark" ? "btn-confirm-unmark" : "btn-confirm-mark"}
+                    onClick={confirmMark}
+                  >
+                    {modal.action === "unmark" ? "Yes, Unmark" : "Yes, Mark"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* HISTORY OVERLAY */}
+          {historyOpen && (
+            <div className="history-overlay" onClick={e => e.target === e.currentTarget && setHistoryOpen(false)}>
+              <div className="history-panel">
+                <div className="history-header">
+                  <h2>📋 All Progress</h2>
+                  <button className="history-close" onClick={() => setHistoryOpen(false)}>✕</button>
+                </div>
+                {NAMES.map(name => {
+                  const chapters = Object.entries(sharedData)
+                    .filter(([_, marker]) => marker === name)
+                    .map(([chapStr, _]) => parseInt(chapStr))
+                    .sort((a, b) => a - b);
+                  return (
+                    <div key={name}>
+                      <div className="user-history-block">
+                        <div className="user-name">
+                          👤 {name}
+                          <span className="count-badge">{chapters.length} marked</span>
+                        </div>
+                        <div className="chapter-tags">
+                          {chapters.length
+                            ? chapters.map(c => <span key={c} className="ctag">Ch.{c}</span>)
+                            : <span className="ctag-empty">No chapters marked yet</span>}
+                        </div>
+                      </div>
+                      <hr className="history-divider" />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* TOAST */}
+          <div className={`toast${toast ? " show" : ""}`}>{toast}</div>
+        </React.Fragment>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+    {% endraw %}
+  </script>
+</body>
+</html>
+"""
+
 @app.route("/")
 def index():
-    resp = make_response(render_template("index.html"))
+    resp = make_response(render_template_string(HTML_TEMPLATE))
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
