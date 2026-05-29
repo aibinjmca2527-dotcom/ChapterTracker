@@ -115,7 +115,7 @@ def save_shared_data(new_data):
         print("SQLite save error:", e)
         return False
 
-HTML_TEMPLATE = """<!DOCTYPE html>
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
