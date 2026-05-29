@@ -94,15 +94,15 @@
     .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
     .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
     .stat-card.green { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); }
-    .stat-card.red { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+    .stat-card.purple { border-color: rgba(124,106,247,0.3); background: rgba(124,106,247,0.06); }
     .stat-num { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; }
     .stat-card.green .stat-num { color: var(--green); }
-    .stat-card.red .stat-num { color: var(--red); }
+    .stat-card.purple .stat-num { color: var(--accent); }
     .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
     /* CHAPTER GRID */
     .section-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
-    .chapter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(65px, 1fr)); gap: 10px; margin-bottom: 28px; }
+    .chapter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; margin-bottom: 28px; }
     .ch-box {
       aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
       background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px;
@@ -113,8 +113,9 @@
     .ch-box:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(124,106,247,0.2); }
     .ch-box.marked { background: var(--green-dim); border-color: var(--green); }
     .ch-box.loading { opacity: 0.4; pointer-events: none; }
-    .ch-num { font-size: 16px; font-weight: 600; color: var(--text); }
+    .ch-num { font-size: 15px; font-weight: 600; color: var(--text); }
     .ch-box.marked .ch-num { color: var(--green); }
+    .ch-marker { font-size: 10px; font-weight: 700; text-transform: uppercase; margin-top: 4px; color: var(--green); opacity: 0.8; letter-spacing: 0.5px; }
 
     /* ACTIONS */
     .actions { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
@@ -179,7 +180,7 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     @media (max-width: 500px) {
-      .chapter-grid { grid-template-columns: repeat(auto-fill, minmax(55px, 1fr)); gap: 8px; }
+      .chapter-grid { grid-template-columns: repeat(auto-fill, minmax(65px, 1fr)); gap: 8px; }
       .login-card { padding: 36px 24px; margin: 16px; }
       .stats { grid-template-columns: 1fr 1fr; }
     }
@@ -204,12 +205,12 @@
     function App() {
       const [screen, setScreen] = useState("loading");
       const [currentUser, setCurrentUser] = useState(null);
-      // sharedData is now a single array of integer chapters e.g. [1, 2, 5]
-      const [sharedData, setSharedData] = useState([]);
+      // sharedData format: { "1": "Aibin", "3": "Milan" } mapping chapter to user
+      const [sharedData, setSharedData] = useState({});
       const [loginEmail, setLoginEmail] = useState("");
       const [loginPass, setLoginPass] = useState("");
       const [loginError, setLoginError] = useState("");
-      const [modal, setModal] = useState(null); // { chap, action: "mark"|"unmark" }
+      const [modal, setModal] = useState(null); // { chap, action: "mark"|"unmark", markedBy: "Name" }
       const [historyOpen, setHistoryOpen] = useState(false);
       const [toast, setToast] = useState("");
       const [loadingChap, setLoadingChap] = useState(null);
@@ -236,9 +237,11 @@
         try {
           const r = await fetch("/api/chapters");
           const data = await r.json();
-          // Make sure it's an array
-          if (Array.isArray(data)) {
+          // Ensure we are setting an object
+          if (data && !Array.isArray(data)) {
             setSharedData(data);
+          } else {
+            setSharedData({});
           }
         } catch (e) {
           console.error(e);
@@ -266,13 +269,18 @@
       function doLogout() {
         localStorage.removeItem("ct_user");
         setCurrentUser(null);
-        setSharedData([]);
+        setSharedData({});
         setScreen("login");
       }
 
       function clickChapter(n) {
-        const isMarked = sharedData.includes(n);
-        setModal({ chap: n, action: isMarked ? "unmark" : "mark" });
+        const strN = String(n);
+        const marker = sharedData[strN];
+        if (marker) {
+          setModal({ chap: n, action: "unmark", markedBy: marker });
+        } else {
+          setModal({ chap: n, action: "mark" });
+        }
       }
 
       async function confirmMark() {
@@ -281,22 +289,28 @@
         setModal(null);
         setLoadingChap(chap);
 
+        const strN = String(chap);
+        
         // Optimistic update
         setSharedData(prev => {
-          let next = new Set(prev);
+          const next = { ...prev };
           if (action === "mark") {
-            next.add(chap);
+            next[strN] = currentUser.name;
           } else {
-            next.delete(chap);
+            delete next[strN];
           }
-          return Array.from(next).sort((a, b) => a - b);
+          return next;
         });
 
         try {
           await fetch("/api/chapters", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: action, chapter: chap }),
+            body: JSON.stringify({ 
+              action: action, 
+              chapter: chap, 
+              user: currentUser.name 
+            }),
           });
           showToast(action === "mark" ? `✅ Chapter ${chap} marked!` : `↩️ Chapter ${chap} unmarked.`);
         } catch {
@@ -313,11 +327,15 @@
       function downloadCSV() {
         let rows = [[...NAMES]];
         
-        // Every user gets the EXACT same list of chapters
-        const chapterStrings = sharedData.map(c => `Chap ${c}`);
-        const userChapters = NAMES.map(() => chapterStrings);
+        const userChapters = NAMES.map(name => {
+          return Object.entries(sharedData)
+            .filter(([_, marker]) => marker === name)
+            .map(([chapStr, _]) => parseInt(chapStr))
+            .sort((a, b) => a - b)
+            .map(c => `Chap ${c}`);
+        });
 
-        const maxRows = chapterStrings.length;
+        const maxRows = Math.max(...userChapters.map(list => list.length), 0);
 
         for (let i = 0; i < maxRows; i++) {
           let row = [];
@@ -335,13 +353,13 @@
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url; a.download = "chapter_tracker_unified.csv"; a.click();
+        a.href = url; a.download = "chapter_tracker_shared.csv"; a.click();
         URL.revokeObjectURL(url);
         showToast("📊 Downloaded! Open in Excel.");
       }
 
-      const totalMarked = sharedData.length;
-      const unreadCount = TOTAL - totalMarked;
+      const totalMarked = Object.keys(sharedData).length;
+      const myMarkedCount = Object.values(sharedData).filter(name => name === currentUser?.name).length;
 
       return (
         <React.Fragment>
@@ -404,12 +422,12 @@
               {/* Stats */}
               <div className="stats">
                 <div className="stat-card green">
-                  <div className="stat-num">{totalMarked}</div>
+                  <div className="stat-num">{totalMarked} <span style={{fontSize:14, color:'var(--green)', opacity:0.6, fontWeight:600}}>/ {TOTAL}</span></div>
                   <div className="stat-label">total chapters read</div>
                 </div>
-                <div className="stat-card red">
-                  <div className="stat-num">{unreadCount}</div>
-                  <div className="stat-label">unread chapters left</div>
+                <div className="stat-card purple">
+                  <div className="stat-num">{myMarkedCount}</div>
+                  <div className="stat-label">read by you</div>
                 </div>
               </div>
 
@@ -417,14 +435,15 @@
               <div className="section-title">Shared Chapters — Tap to mark</div>
               <div className="chapter-grid">
                 {Array.from({ length: TOTAL }, (_, i) => i + 1).map(n => {
-                  const isMarked = sharedData.includes(n);
+                  const marker = sharedData[String(n)];
                   return (
                     <div
                       key={n}
-                      className={`ch-box${isMarked ? " marked" : ""}${loadingChap === n ? " loading" : ""}`}
+                      className={`ch-box${marker ? " marked" : ""}${loadingChap === n ? " loading" : ""}`}
                       onClick={() => clickChapter(n)}
                     >
                       <div className="ch-num">{n}</div>
+                      {marker && <div className="ch-marker">{marker}</div>}
                     </div>
                   );
                 })}
@@ -445,8 +464,8 @@
                 <div className="modal-title">{modal.action === "unmark" ? "Unmark Chapter?" : "Mark as Read?"}</div>
                 <div className="modal-body">
                   {modal.action === "unmark"
-                    ? <React.Fragment>Are you sure you want to unmark <strong>Chapter {modal.chap}</strong> for everyone?</React.Fragment>
-                    : <React.Fragment>Mark <strong>Chapter {modal.chap}</strong> as read for everyone?</React.Fragment>}
+                    ? <React.Fragment>Chapter {modal.chap} was marked by <strong>{modal.markedBy}</strong>. Do you want to unmark it?</React.Fragment>
+                    : <React.Fragment>Mark <strong>Chapter {modal.chap}</strong> as read under your name?</React.Fragment>}
                 </div>
                 <div className="modal-btns">
                   <button className="btn-cancel" onClick={() => setModal(null)}>Cancel</button>
@@ -470,16 +489,20 @@
                   <button className="history-close" onClick={() => setHistoryOpen(false)}>✕</button>
                 </div>
                 {NAMES.map(name => {
+                  const chapters = Object.entries(sharedData)
+                    .filter(([_, marker]) => marker === name)
+                    .map(([chapStr, _]) => parseInt(chapStr))
+                    .sort((a, b) => a - b);
                   return (
                     <div key={name}>
                       <div className="user-history-block">
                         <div className="user-name">
                           👤 {name}
-                          <span className="count-badge">{sharedData.length} marked</span>
+                          <span className="count-badge">{chapters.length} marked</span>
                         </div>
                         <div className="chapter-tags">
-                          {sharedData.length
-                            ? sharedData.map(c => <span key={c} className="ctag">Ch.{c}</span>)
+                          {chapters.length
+                            ? chapters.map(c => <span key={c} className="ctag">Ch.{c}</span>)
                             : <span className="ctag-empty">No chapters marked yet</span>}
                         </div>
                       </div>

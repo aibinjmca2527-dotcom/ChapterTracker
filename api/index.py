@@ -19,8 +19,8 @@ USERS = {
 KV_URL = os.environ.get("KV_REST_API_URL")
 KV_TOKEN = os.environ.get("KV_REST_API_TOKEN")
 
-# Global state format is now a single array of integer chapters: e.g. [1, 2, 5]
-INITIAL_SEED = []
+# Global state format mapping chapter string to user name: {"1": "Aibin", "3": "Milan"}
+INITIAL_SEED = {}
 
 def call_kv(command):
     if not KV_URL or not KV_TOKEN:
@@ -55,11 +55,11 @@ def init_db():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS shared_state (
                 id TEXT PRIMARY KEY,
-                marked TEXT NOT NULL DEFAULT '[]',
+                marked TEXT NOT NULL DEFAULT '{}',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        cursor.execute("INSERT OR IGNORE INTO shared_state (id, marked) VALUES ('global', '[]')")
+        cursor.execute("INSERT OR IGNORE INTO shared_state (id, marked) VALUES ('global', '{}')")
         conn.commit()
         conn.close()
     except Exception as e:
@@ -73,7 +73,7 @@ def get_shared_data():
         if result is not None:
             try:
                 data = json.loads(result)
-                if isinstance(data, dict): # if they have the old dictionary format, reset it
+                if isinstance(data, list): # if they have the old list format, reset it
                     return INITIAL_SEED
                 return data
             except Exception:
@@ -90,7 +90,7 @@ def get_shared_data():
         conn.close()
         if row and row["marked"]:
             data = json.loads(row["marked"])
-            if isinstance(data, dict):
+            if isinstance(data, list):
                 return INITIAL_SEED
             return data
         return INITIAL_SEED
@@ -140,22 +140,24 @@ def chapters():
         if request.method == "POST":
             payload = request.json
             action = payload.get("action")
-            chapter = payload.get("chapter")
+            chapter = str(payload.get("chapter"))
+            user_name = payload.get("user")
             
-            if not action or chapter is None:
+            if not action or not chapter:
                 return jsonify({"error": "Invalid payload format."}), 400
                 
-            current_data = set(get_shared_data())
+            current_data = get_shared_data()
             
             if action == "mark":
-                current_data.add(int(chapter))
+                if not user_name:
+                    return jsonify({"error": "User name required to mark."}), 400
+                current_data[chapter] = user_name
             elif action == "unmark":
-                current_data.discard(int(chapter))
-                
-            final_list = sorted(list(current_data))
-            
-            if save_shared_data(final_list):
-                return jsonify({"ok": True, "data": final_list}), 200
+                if chapter in current_data:
+                    del current_data[chapter]
+                    
+            if save_shared_data(current_data):
+                return jsonify({"ok": True, "data": current_data}), 200
             else:
                 return jsonify({"error": "Failed to save chapter progress."}), 500
     except Exception as e:
