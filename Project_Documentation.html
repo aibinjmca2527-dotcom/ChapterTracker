@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter Tracker - Project Documentation</title>
+  <style>
+    :root {
+      --primary: #7c6af7;
+      --primary-dark: #6055d8;
+      --secondary: #1a1a22;
+      --text: #2e2e3e;
+      --text-light: #5a5a75;
+      --bg: #f9f9fc;
+      --card-bg: #ffffff;
+      --border: #e2e2ec;
+      --code-bg: #f1f1f6;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      color: var(--text);
+      background-color: var(--bg);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 850px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 50px 40px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    }
+    header {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 30px;
+      margin-bottom: 40px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 50px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-size: 32px;
+      color: var(--secondary);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+    }
+    h2 {
+      font-size: 22px;
+      color: var(--secondary);
+      margin-top: 35px;
+      margin-bottom: 15px;
+      border-left: 4px solid var(--primary);
+      padding-left: 12px;
+    }
+    h3 {
+      font-size: 16px;
+      color: var(--primary-dark);
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+    p, li {
+      color: var(--text-light);
+      font-size: 15px;
+      margin-bottom: 15px;
+    }
+    ul, ol {
+      margin-left: 24px;
+      margin-bottom: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    code {
+      font-family: 'Courier New', Courier, monospace;
+      background-color: var(--code-bg);
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 14px;
+      color: var(--primary-dark);
+    }
+    pre {
+      background-color: var(--secondary);
+      color: #e8e8f0;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13.5px;
+      margin: 15px 0;
+    }
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+    }
+    .highlight-box {
+      background-color: rgba(124, 106, 247, 0.05);
+      border: 1px solid rgba(124, 106, 247, 0.2);
+      border-radius: 10px;
+      padding: 20px;
+      margin: 25px 0;
+    }
+    .highlight-box p:last-child {
+      margin-bottom: 0;
+    }
+    .footer {
+      margin-top: 50px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-light);
+    }
+    /* PDF Print Styles */
+    @media print {
+      body {
+        background-color: #fff;
+        padding: 0;
+      }
+      .container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+      }
+      .no-print {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">📚</div>
+    <h1>Chapter Tracker</h1>
+    <div class="subtitle">Complete Technical & Deployment Documentation</div>
+  </header>
+
+  <div class="no-print highlight-box" style="background-color: #eef2ff; border-color: #c7d2fe;">
+    <p><strong>🖨️ PDF Generation Tip:</strong> To save this document as a clean, professionally-styled PDF, press <strong>Ctrl + P</strong> (Windows) or <strong>Cmd + P</strong> (Mac) in your web browser, select <strong>"Save as PDF"</strong> as your destination, and save it directly!</p>
+  </div>
+
+  <h2>1. Project Overview</h2>
+  <p>The **Chapter Tracker** is a highly efficient web application designed to track the collective reading progress of a shared group of readers in real-time. Originally written in Next.js, the codebase has been fully rewritten into a clean **Python Flask** backend and a unified **React** frontend, optimized to run seamlessly on Vercel's cloud infrastructure.</p>
+
+  <h2>2. Modern Tech Stack</h2>
+  <ul>
+    <li><strong>Backend:</strong> Python Flask (micro-framework serving the frontend and the REST API).</li>
+    <li><strong>Frontend:</strong> Modern responsive HTML5/CSS3 coupled with standalone React & Babel (injected in <code>templates/index.html</code>) for clean component architecture and rapid state management without requiring complex Node build tools.</li>
+    <li><strong>Database Layer:</strong> High-performance dual-engine database setup:
+      <ul>
+        <li><strong>Vercel KV (Redis):</strong> Used in production on Vercel for 100% permanent data storage that never resets.</li>
+        <li><strong>SQLite (Local File):</strong> Used as an automatic fallback when running locally for zero-config development.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h2>3. System Architecture & Workings</h2>
+  <p>The application implements a smart fallback mechanism inside the database layer (<code>api/index.py</code>) to balance local simplicity and production durability:</p>
+  
+  <h3>Local Development Flow</h3>
+  <p>When running the application locally on your computer, the environment variable detector checks for Vercel credentials. Finding none, it automatically creates and reads from a local SQLite file (<code>database.db</code>). Any changes you make are instantly preserved in this local database file.</p>
+
+  <h3>Production/Vercel Flow</h3>
+  <p>When deployed on Vercel and connected to **Vercel KV/Upstash Redis**, the application detects the standard <code>KV_REST_API_URL</code> and <code>KV_REST_API_TOKEN</code> environment variables. It bypasses SQLite and performs super-fast RESTful HTTP requests using Python's built-in <code>urllib.request</code> library to load/save JSON data directly in the cloud. This makes the database 100% persistent across sleep intervals.</p>
+
+  <h2>4. Core API Endpoints</h2>
+  <p>The backend serves three primary HTTP routes:</p>
+  
+  <h3>1. Home Page Route</h3>
+  <pre><code>GET /</code></pre>
+  <p>Serves the clean React client UI in <code>templates/index.html</code>.</p>
+
+  <h3>2. Login Endpoint</h3>
+  <pre><code>POST /api/login
+Body: { "email": "aibin@gmail.com", "password": "aibin123" }</code></pre>
+  <p>Verifies reader email and password credentials and grants access.</p>
+
+  <h3>3. Chapters Endpoint</h3>
+  <pre><code>GET /api/chapters
+Response: { "Aibin": [1, 2], "Milan": [3, 4], ... }
+
+POST /api/chapters
+Body: { "name": "Aibin", "chapters": [1, 2, 3] }</code></pre>
+  <p>Reads the collective progress or registers newly completed chapters for a specific reader.</p>
+
+  <h2>5. Excel & CSV Reporting</h2>
+  <p>The frontend client has a built-in <strong>"Download Excel Report"</strong> button. Clicking this triggers a browser script that builds a clean comma-separated table in the following structure:</p>
+  <pre><code>"Aibin","Milan","Edwin","Seba","Lakshmi"
+"Chap 1","Chap 3","","",""
+"Chap 2","Chap 4","","",""</code></pre>
+  <p>This triggers an automatic download of a <code>chapter_tracker.csv</code> spreadsheet which can be double-clicked to view or print immediately in Microsoft Excel or Google Sheets.</p>
+
+  <h2>6. Quick Setup & Future Restarts</h2>
+  
+  <h3>Running Locally</h3>
+  <ol>
+    <li>Ensure Python is installed on your computer.</li>
+    <li>Open a command prompt in the <code>C:\chappp</code> folder and run:
+      <pre><code>pip install -r requirements.txt
+python api/index.py</code></pre>
+    </li>
+    <li>Open your browser to <code>http://127.0.0.1:5000</code> to view and test your application.</li>
+  </ol>
+
+  <h3>Updating Git & Vercel</h3>
+  <p>Whenever you modify files in the future, run these commands to update your live website:</p>
+  <pre><code>git add .
+git commit -m "Update chapter tracker project"
+git push origin main</code></pre>
+  <p>Vercel will build and publish the changes within 30 seconds automatically.</p>
+
+  <div class="footer">
+    <p>Chapter Tracker Document &copy; 2026. Handcrafted for Aibin & Team.</p>
+  </div>
+</div>
+
+</body>
+</html>
