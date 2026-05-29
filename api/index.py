@@ -2,7 +2,7 @@ import os
 import json
 import sqlite3
 import urllib.request
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, make_response
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 
@@ -117,7 +117,11 @@ def save_shared_data(new_data):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    resp = make_response(render_template("index.html"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 @app.route("/api/login", methods=["POST"])
 def login():
