@@ -1,3 +1,2 @@
 Flask==3.0.3
 Werkzeug==3.0.3
-libsql-client==0.3.1

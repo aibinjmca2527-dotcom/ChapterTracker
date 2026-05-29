@@ -1,6 +1,6 @@
 import os
 import json
-import libsql_client
+import sqlite3
 from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -14,14 +14,17 @@ USERS = {
 }
 
 def get_db():
-    url = os.environ.get("TURSO_DATABASE_URL", "file:database.db")
-    token = os.environ.get("TURSO_AUTH_TOKEN", "")
-    return libsql_client.create_client_sync(url=url, auth_token=token)
+    # Vercel only allows writing to the /tmp folder
+    db_path = '/tmp/database.db' if os.environ.get('VERCEL') else 'database.db'
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
     try:
-        client = get_db()
-        client.execute('''
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS chapters (
                 user_name TEXT PRIMARY KEY,
                 email TEXT NOT NULL,
@@ -39,9 +42,10 @@ def init_db():
         ]
         
         for u in seed_users:
-            client.execute("INSERT OR IGNORE INTO chapters (user_name, email, marked) VALUES (?, ?, '[]')", [u["name"], u["email"]])
+            cursor.execute("INSERT OR IGNORE INTO chapters (user_name, email, marked) VALUES (?, ?, '[]')", (u["name"], u["email"]))
             
-        client.close()
+        conn.commit()
+        conn.close()
     except Exception as e:
         print("DB Init Error:", e)
 
@@ -67,17 +71,18 @@ def login():
 @app.route("/api/chapters", methods=["GET", "POST"])
 def chapters():
     try:
-        client = get_db()
+        conn = get_db()
+        cursor = conn.cursor()
     except Exception as e:
         return jsonify({"error": f"DB Connection Error: {str(e)}"}), 500
         
     try:
         if request.method == "GET":
-            rs = client.execute("SELECT user_name, marked FROM chapters")
+            cursor.execute("SELECT user_name, marked FROM chapters")
+            rows = cursor.fetchall()
             data = {}
-            for row in rs.rows:
-                # libsql_client rows can be accessed by index or name. index is safest
-                data[row[0]] = json.loads(row[1] if row[1] else "[]")
+            for row in rows:
+                data[row["user_name"]] = json.loads(row["marked"] if row["marked"] else "[]")
             return jsonify(data), 200
             
         if request.method == "POST":
@@ -91,12 +96,13 @@ def chapters():
             chapters_list.sort()
             marked_json = json.dumps(chapters_list)
             
-            client.execute("UPDATE chapters SET marked = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ?", [marked_json, name])
+            cursor.execute("UPDATE chapters SET marked = ?, updated_at = CURRENT_TIMESTAMP WHERE user_name = ?", (marked_json, name))
+            conn.commit()
             return jsonify({"ok": True}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
-        client.close()
+        conn.close()
 
 if __name__ == "__main__":
     app.run(debug=True)
